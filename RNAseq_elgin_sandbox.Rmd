@@ -1,0 +1,636 @@
+---
+title: "Jo_RNAseq_elgin_SANDBOX"
+author: "Elgin Akin"
+date: "2022-10-20"
+output: html_document
+---
+
+
+## Add Column with rownames total gene count table - add gene IDs 
+
+use vst for heatmap but annotate - dont run 
+
+```{r}
+
+#add a column with rownamesto total gene count table
+
+library(org.Hs.eg.db)
+library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(magrittr)
+
+#vst$Gene_ID <- mapIds(org.Hs.eg.db, keys = rownames(vst), keytype = "ENSEMBL", column = "SYMBOL")
+#rld$Gene_ID <- mapIds(org.Hs.eg.db, keys = rownames(rld), keytype = "ENSEMBL", column = "SYMBOL")
+
+vst %>% drop_na(vst$Gene_ID) %>% distinct(Gene_ID, .keep_all = FALSE) #removedupliated gene IDs
+
+# change row names 
+row.names(vst) <- vst$Gene_ID
+summary(vst)
+```
+
+
+### PCA with BiPlot
+
+```{r biplot example}
+
+BiocManager::install("airway")
+library(airway)
+
+colData(airway)
+coldata.row
+
+data('airway')
+airway$dex %<>% relevel('untrt')
+
+ens <- rownames(airway)
+
+###########
+
+library(cluster)
+
+library(ggfortify)
+
+df <- iris[1:4]
+pca_res <- prcomp(df, scale. = TRUE)
+
+autoplot(PCAdata, loadings = TRUE, loadings.colour = 'blue')
+
+autoplot(pca_res, data = iris, colour = 'Species', loadings = TRUE)
+
+PCA
+```
+
+```{r PCA with Bi Plot}
+
+library(PCAtools)
+library(DESeq2)
+#generate PCA 
+
+write.csv(as.data.frame(coldata.row), file = "coldata.row.csv")
+coldata.row <- read_csv("./coldata.row.csv")
+coldata.row <- coldata.row  %>% remove_rownames %>% column_to_rownames(var="...1")
+
+pvst <- pca(vst, metadata = coldata.row, removeVar = 0.1) #with vst transformation 
+prdl <- pca(rld, removeVar = 0.1) #with rld transformation
+
+pvst
+prdl
+
+#for vst
+screeplot(pvst, axisLabSize = 18, titleLabSize = 22)
+
+biplot(pvst, showLoadings = TRUE, colby = NULL, labSize = 5, pointSize = 5, sizeLoadingsNames = 5)
+
+#for rld
+
+screeplot(prdl, axisLabSize = 18, titleLabSize = 22)
+
+biplot(prdl, showLoadings = TRUE,
+    labSize = 5, pointSize = 5, sizeLoadingsNames = 5)
+
+pairsplot(prdl)
+
+
+
+```
+
+```{r PCA Explorer (interactive)}
+
+library("pcaExplorer")
+pcaExplorer(dds = dds) #run for interactive view
+```
+
+
+
+```{r enhancedvolcano function with label lists}
+
+# https://bioconductor.org/packages/devel/bioc/vignettes/EnhancedVolcano/inst/doc/EnhancedVolcano.html
+## Simple function for plotting a Volcano plot, returns a ggplot object
+
+library(EnhancedVolcano)
+
+deseq.volcanoNA <- function(result, datasetName) {
+  return(EnhancedVolcano(result,
+    x = "log2FoldChange", y = "pvalue",
+    lab = NA, #result$symbol, #all lables
+    title = paste(datasetName,"48 hpi"),
+    subtitle = "DEseq2 Differential Expression Comparison by VIRUS",
+    selectLab = NULL,
+    #caption = bquote(italic("FDR <= 0.05 and absolute FC >= 1.5")),
+    max.overlaps = 15, #top 15 genes? Or do not overlap over 
+    # Aesthetics
+    # Change text and icon sizes
+    labSize = 3,
+    #remove verticle threshold line
+    pointSize = 1,
+    axisLabSize = 11,
+    titleLabSize = 12,
+    subtitleLabSize = 8,
+    captionLabSize = 10,
+    colAlpha = 2 / 5,
+    legendPosition = "left",
+    legendLabSize = 10,
+    legendIconSize = 4,
+    drawConnectors = TRUE,
+    boxedLabels = TRUE,
+    border = 'full',
+    gridlines.major = FALSE, 
+    gridlines.minor = FALSE,
+    vlineType = blank,
+    hlineType = blank, 
+    # Set cutoffs
+    pCutoff = 0.05, FCcutoff = 0.8,
+    legendLabels=c('NS', 'Log(2)FC', "p-value", 'Log(2)FC and p-value'))) 
+}
+
+```
+
+
+
+# Gene Clustering
+
+https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html 
+
+* [GO enrichment plottingtutorial](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html)
+* [gprofiler](https://biit.cs.ut.ee/gprofiler/gost) Web Server
+* [tutorial](https://www.youtube.com/watch?v=BZyi8L7vBuc&list=PL8C1RoBcM04cmdWaN9p1uXSyKxlTNh0qz&index=39)
+* [GO Guru](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html)
+
+
+## Data Cleaning and subsetting
+
+```{r convert ensemble to entrez IDs and clean}
+
+library(org.Hs.eg.db)
+library(tidyr)
+library(dplyr)
+
+#convert ensemble to entrez "rolls eyes" add to shit
+VicvsYam_wID$ENTREZ_ID <- mapIds(org.Hs.eg.db, keys = rownames(VicvsYam_wID), keytype="ENSEMBL", column = "ENTREZID")
+VicvsM_wID$ENTREZ_ID <- mapIds(org.Hs.eg.db, keys = rownames(VicvsM_wID), keytype="ENSEMBL", column = "ENTREZID")
+YamvsM_wID$ENTREZ_ID <- mapIds(org.Hs.eg.db, keys = rownames(YamvsM_wID), keytype="ENSEMBL", column = "ENTREZID")
+
+#drop nas and quantify? 
+go.VicvsYam_wID <- VicvsYam_wID %>% drop_na(ENTREZ_ID)
+go.VicvsM_wID <-  VicvsM_wID %>% drop_na(ENTREZ_ID)
+go.YamvsM_wID <-  YamvsM_wID %>% drop_na(ENTREZ_ID)
+
+
+#confirm NA with dplyr
+go.VicvsYam_wID %>%
+  summarise_all(funs(sum(is.na(.))))
+go.VicvsM_wID %>%
+  summarise_all(funs(sum(is.na(.))))
+go.YamvsM_wID %>%
+  summarise_all(funs(sum(is.na(.))))
+
+#good to go
+```
+
+What the hell, why so few genes... (removed NAs from other columns dipshit)
+
+```{r comparison subsets gene lists}
+
+#vic vs yam 
+upVicYam <- filter(go.VicvsYam_wID, log2FoldChange >= 1.5 & pvalue <= 0.05)
+downVicYam <- filter(go.VicvsYam_wID, log2FoldChange <= -1.5 & pvalue <= 0.05)
+
+upVicYam.list <- list(upVicYam$ENTREZ_ID)#extract ENTREZ ID as list
+upVicYam.list.ensemble <- list(rownames(upVicYam))
+
+downVicYam.list <- list(downVicYam$ENTREZ_ID) #extract ENTREZ ID as list
+
+#vic vs mock
+upVicvsMock <- filter(go.VicvsM_wID, log2FoldChange >= 1.5 & pvalue <= 0.05)
+downVicvsMock <- filter(go.VicvsM_wID, log2FoldChange >= 1.5 & pvalue <= 0.05)
+
+upVicvsMock.list <- list(upVicvsMock$ENTREZ_ID) #extract UP ENTREZ ID as list
+downVicvsMock.list <- list(downVicvsMock$ENTREZ_ID) #extract DOWN ENTREZ ID as list
+
+
+#yam vs mock 
+upYamvsMock <- filter(go.YamvsM_wID, log2FoldChange >= 1.5 & pvalue <= 0.05)
+downYamvsMock <- filter(go.YamvsM_wID, log2FoldChange >= 1.5 & pvalue <= 0.05)
+
+upYamvsMock.list <- list(upYamvsMock$ENTREZ_ID) #extract UP ENTREZ ID as list
+downYamvsMock.list <- list(downYamvsMock$ENTREZ_ID) #extract DOWN ENTREZ ID as list
+
+```
+
+### Go profiler
+
+```{r ELGIN gprofiler and plotting function}
+
+library(gprofiler2)
+
+g.profiler <- function(gene_list){
+   return(gost(gene_list, organism = "hsapiens", ordered_query = TRUE)
+  )
+}
+
+#plotting function 
+
+g.prof_plot <- function(gost_run) {
+  return(gostplot(gost_run, 
+                  capped = FALSE, 
+                  interactive = TRUE)
+         )
+  
+}
+
+```
+
+gprofiler calling (run only once, takes a bit)
+
+```{r  gprofile calling}
+#upregulated by comparison group
+upVicYam.g <- g.profiler(upVicYam.list)
+upYamvsMock.g <- g.profiler(upYamvsMock.list)
+upVicvsMock.g <- g.profiler(upVicvsMock.list)
+
+#downregulated by comparison group 
+
+upVicYam.g <- g.profiler(upVicYam.list)
+upYamvsMock.g <- g.profiler(upYamvsMock.list)
+upVicvsMock.g <- g.profiler(upVicvsMock.list)
+
+```
+
+Plots 
+
+```{r gprofiler plotting}
+
+#upregulated by comparison group
+
+upVicYam.g.p <- g.prof_plot(upVicYam.g)
+upYamvsMock.g.p <- g.prof_plot(upYamvsMock.g)
+upVicvsMock.g.p <- g.prof_plot(upVicvsMock.g)
+
+upVicYam.g.p
+upYamvsMock.g.p 
+upVicvsMock.g.p
+
+#downregulated by comparison group 
+
+```
+
+## ShinyGO DataPlots 
+
+These gene lists are to be upoaded to shinyGO and subsequence GO lists sorted by FDR and FDR + fold change wil lbe imported back for plotting 
+```{r print gene lists}
+
+write.table((as.data.frame(upVicYam.list)), "./GO_Gene_lists/upVicYam.txt", col.names = FALSE, row.names = FALSE)
+write.table((as.data.frame(upYamvsMock.list)), "./GO_Gene_lists/upYamvsMock.txt", col.names = FALSE, row.names = FALSE) 
+write.table((as.data.frame(upVicvsMock.list)), "./GO_Gene_lists/upVicvsMock.txt", col.names = FALSE, row.names = FALSE) 
+
+```
+
+### Import ShinyGO Data
+
+```{r}
+
+upVicYam_enrichment <- read.csv("./GO_Gene_lists/Shiny_GO/upVicYam/sort_by_fdr-fold/upVicYam_enrichment.csv")
+upVicMock_enrichment <- read.csv("./GO_Gene_lists/Shiny_GO/upVicMock/upVicMock_enrichment-2.csv")
+upYamMock_enrichment <- read.csv("./GO_Gene_lists/Shiny_GO/upYamMock/upYamMock_enrichment.csv")
+
+#bind 
+up_cat_enrichment <- rbind(upVicYam_enrichment, upVicMock_enrichment, upYamMock_enrichment)
+up_cat_enrichment.1 <- rbind(upVicMock_enrichment, upYamMock_enrichment)
+
+```
+
+```{r}
+#remove meaningless GO pathway plots 
+library(dplyr)
+up_cat_enrichment.2 <- filter(up_cat_enrichment, Pathway != "Response to other organism")
+```
+
+
+### Plot ShinyGo Data 
+
+up Vic vs Yam vs Mock GO - 3 Comparisons
+```{r plot}
+
+library(magrittr)
+library(ggplot2)
+
+enrich_dot <- ggplot(up_cat_enrichment, aes(x = Comparison, y = Pathway, color = Enrichment.FDR, size = nGenes)) + 
+  geom_point() + 
+  scale_color_gradient(low = "#7B56BA", high = "black")
+
+enrich_dot_fig <- enrich_dot + 
+                    theme_bw() +
+                    theme(axis.text.x = element_text(angle = 45, hjust=1),
+                          legend.title = element_text(size = 7), 
+                          legend.text = element_text(size = 7))
+
+enrich_dot_fig
+
+ggsave("./figures/GO_dotplots/enrich_dot_fig-all-compare.png", plot = enrich_dot_fig, width = 7, height = 8)
+
+```
+
+up Vic Mock and up Yam Mock GO only 
+
+```{r}
+
+library(magrittr)
+library(ggplot2)
+
+enrich_dot.1 <- ggplot(up_cat_enrichment.1, aes(x = Comparison, y = Pathway, color = Enrichment.FDR, size = nGenes)) + 
+  geom_point() + 
+  scale_color_gradient(low = "#7B56BA", high = "black")
+
+enrich_dot.1_fig <- enrich_dot.1 + 
+                          theme_bw() + 
+                          theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+                          theme(axis.text.x = element_text(angle = 45, hjust=1),
+                                legend.title = element_text(size = 7), 
+                                legend.text = element_text(size = 7)) + 
+
+enrich_dot.1_fig
+
+ggsave("./figures/GO_dotplots/enrich_dot.1_fig.png",plot = enrich_dot.1_fig, width = 7, height = 8)
+
+```
+
+up Vic Mock and up Yam Mock GO only - WITH FDR facet 
+
+```{r}
+
+library(magrittr)
+library(ggplot2)
+
+enrich_dot_fdr <- ggplot(up_cat_enrichment.1, aes(x = Fold.Enrichment, y = Pathway, color = Enrichment.FDR, size = nGenes)) + 
+  geom_point() + 
+  scale_color_gradient(low = "#7B56BA", high = "black")
+
+enrich_dot_fdr_fig <- enrich_dot_fdr + 
+                          theme_bw() + 
+                          theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+                          theme(axis.text.x = element_text(angle = 45, hjust=1),
+                                legend.title = element_text(size = 7), 
+                                legend.text = element_text(size = 7)) +
+                          facet_wrap(. ~ Comparison)
+                      
+
+enrich_dot_fdr_fig
+
+ggsave("./figures/GO_dotplots/enrich_dot_facet_2_comp_fig.png",plot = enrich_dot_fdr_fig, width = 10, height = 8)
+```
+up All comparisons GO only - WITH FDR facet 
+```{r}
+
+library(magrittr)
+library(ggplot2)
+
+enrich_dot_all_fdr <- ggplot(up_cat_enrichment, aes(x = Fold.Enrichment, y = Pathway, color = Enrichment.FDR, size = nGenes)) + 
+  geom_point() + 
+  scale_color_gradient(low = "#7B56BA", high = "black")
+
+enrich_dot_fdr_all_fig <- enrich_dot_all_fdr + 
+                          theme_bw() + 
+                          theme(axis.text.x = element_text(angle = 45, hjust=1)) + 
+                          theme(axis.text.x = element_text(angle = 45, hjust=1),
+                                legend.title = element_text(size = 7), 
+                                legend.text = element_text(size = 7)) +
+                          facet_wrap(. ~ Comparison)
+                      
+
+enrich_dot_fdr_all_fig
+
+ggsave("./figures/GO_dotplots/enrich_dot_facet_3_comp_fig.png",plot = enrich_dot_fdr_all_fig, width = 10, height = 8)
+
+```
+
+
+### GO Bar Plots
+
+Bar Plot from: [link](https://yulab-smu.top/biomedical-knowledge-mining-book/enrichplot.html#biological-theme-comparison)
+
+* Not working out...
+
+```{r ElGIN GO Stats Bar Plot}
+
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(GO.db)
+library(GOstats)
+library(DOSE) #primary package used 
+
+upVicYam.list.char <- unlist(upVicYam.list)
+
+ggo <- groupGO(gene     = upVicYam.list.char,
+               OrgDb    = org.Hs.eg.db,
+               readable = TRUE,
+               keyType = "ENTREZID")
+
+head(ggo)
+
+library(enrichplot)
+barplot(edo, showCategory=20) 
+
+mutate(edo, qscore = -log(p.adjust, base=10)) %>% 
+    barplot(x="qscore")
+
+edo <- enrichDGN(upVicYam.list.char)
+
+library(enrichplot)
+barplot(edo, showCategory=20) 
+
+```
+
+### Pathway Visualization Overlay 
+
+Different Pathways from Kegg 
+* [influenza](https://www.kegg.jp/entry/map05164)
+
+```{r pathways plot - intersecting}
+
+#install.packages("pathview",repos="http://R-Forge.R-project.org")
+#library(pathview)
+library(pathview)
+#run example from https://rdrr.io/rforge/pathview/man/pathview.html
+
+i <- 1
+pv.out <- pathview(gene.data = gse16873.d[, 1], pathway.id = demo.paths$sel.paths[i], species = "hsa", out.suffix = "gse16873", kegg.native = TRUE)
+
+str(pv.out)
+head(pv.out$plot.data.gene)
+
+```
+
+```{r JESS Cluster Profiler}
+
+# installing additional packages
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+# install.packages("BiocManager")
+# BiocManager::install(c("clusterProfiler", "enrichplot", "DOSE"))
+
+# loading the additional packages
+library(clusterProfiler)
+library(enrichplot)
+library(DOSE) # needed to convert to enrichResult object
+
+
+lower_names <- row.names(lower)
+upper_names <- row.names(upper)
+
+# enrichment analysis using gene names
+multi_gp <- gost(list("Higher at 32" = lower_names, "Higher at 37" = upper_names), multi_query = FALSE, evcodes = TRUE)
+
+# modify the g:Profiler data frame
+gp_mod <- multi_gp$result[, c(
+  "query", "source", "term_id",
+  "term_name", "p_value", "query_size",
+  "intersection_size", "term_size",
+  "effective_domain_size", "intersection"
+)]
+gp_mod$GeneRatio <- paste0(gp_mod$intersection_size, "/", gp_mod$query_size)
+gp_mod$BgRatio <- paste0(gp_mod$term_size, "/", gp_mod$effective_domain_size)
+names(gp_mod) <- c(
+  "Cluster", "Category", "ID", "Description", "p.adjust",
+  "query_size", "Count", "term_size", "effective_domain_size",
+  "geneID", "GeneRatio", "BgRatio"
+)
+gp_mod$geneID <- gsub(",", "/", gp_mod$geneID)
+# row.names(gp_mod) = gp_mod$ID
+
+# define as compareClusterResult object
+gp_mod_cluster <- new("compareClusterResult", compareClusterResult = gp_mod)
+
+# define as enrichResult object
+gp_mod_enrich <- new("enrichResult", result = gp_mod)
+
+
+enrichplot::dotplot(gp_mod_cluster, font.size = 7, showCategory = 20)
+barplot(gp_mod_enrich, order = TRUE, showCategory = 50, font.size = 3, color = "p.adjust") + viridis::scale_fill_viridis(option = "brewerblues") +
+  ggplot2::facet_grid(~Cluster) +
+  ggplot2::ylab("Intersection size")
+
+
+```
+
+```{r JESS template gprofiler}
+
+library("gprofiler2")
+
+gpro_VicvsYam <- subset(VicvsYam_wID, padj < 0.05)
+gpro_VicvsYam_up <- subset(VicvsYam_wID, log2FoldChange > 1)
+gpro_VicvsYam_down <- subset(VicvsYam_wID, log2FoldChange < -1)
+
+gpro_VicvsYam_up_gp <- gost(row.names(gpro_VicvsYam_up), organism = "hsapiens")
+gpro_VicvsYam_down_gp <- gost(row.names(gpro_VicvsYam_down), organism = "hsapiens")
+
+# order by log2FC
+
+#lower genes first
+lower_ordered <- lower[order(lower$log2FoldChange, decreasing = TRUE), ]
+gp_lower_ordered <- gost(row.names(lower_ordered),
+  organism = "hsapiens",
+  ordered_query = TRUE
+)
+
+head(gp_lower_ordered$result, 8)
+
+#Upper genes second
+upper_ordered <- upper[order(upper$log2FoldChange, decreasing = TRUE), ]
+gp_upper_ordered <- gost(row.names(upper_ordered),
+  organism = "hsapiens",
+  ordered_query = TRUE
+)
+head(gp_upper_ordered$result, 8)
+
+gostplot(gp_lower, interactive = TRUE)
+gostplot(gp_upper, interactive = TRUE)
+
+multi_gp <- gost(list(
+  "Higher at 32" = row.names(lower),
+  "Higher at 37" = row.names(upper)
+))
+p2 <- gostplot(multi_gp, interactive = FALSE)
+publish_gostplot(p2)
+
+x <- gp_lower_ordered$result
+x <- as.matrix(x)
+write.csv(x, file = "48hrgenesincreasedat32.csv", row.names = F)
+
+y <- gp_upper_ordered$result
+y <- as.matrix(y)
+write.csv(y, file = "48hrgenesincreasedat37.csv", row.names = F)
+
+write.csv(x = uppervslower48, file = "48hrdifferentiallyexpressedgenes.csv")
+
+
+```
+
+```{r session info}
+
+sessionInfo()
+
+```
+
+
+```{r Double Venn, message=TRUE, warning=TRUE, paged.print=FALSE}
+
+library(magrittr)
+library(ggplot2)
+library(tibble)
+
+if (!require(devtools)) install.packages("devtools")
+#devtools::install_github("gaospecial/ggVennDiagram")
+library("ggVennDiagram")
+
+# Venn Diagram of DEseq2 list comparisons
+# Generates 3 lists with DEGs intercepting gene names
+# DOES NOT TAKE INTO ACCOUNT FOLD CHANGE
+
+pval_threshold <- 0.05 # p valu threshold
+fold_change <- 1.5 #fold change threshold 
+
+# sigOE_Vic_tb <- VicvsM %>%
+#   data.frame()
+# sigOE_Vic_tble <- as_tibble(sigOE_Vic_tb)
+# try <- filter(sigOE_Vic_tble, 'padj' < 0.05)
+# sigOE_Vic_tble_filt <- filter(sigOE_Vic_tble, 'padj' < pval_threshold & abs('log2FoldChange') > fold_change)
+# write.csv(sigOE_Vic_tb, file = "sigOE_Vic_tb.csv")
+
+#FIX THIS
+
+Vic.degs <- VicvsM_wID[which(VicvsM_wID$pvalue <= pval_threshold), ] #Vic pval
+Vic.degs.up <- Vic.degs[which(VicvsM_wID$log2FoldChange >= fold_change), ] #p val and fdr UP
+Vic.degs.down <- Vic.degs[which(VicvsM_wID$log2FoldChange <= fold_change), ] #p val and fdr DOWN
+
+Vic.degs.up <- row.names(Vic.degs.up)
+Vic.degs.down <- row.names(Vic.degs.down)
+
+Yam.degs <- row.names(YamvsM[which(YamvsM$pvalue <= pval_threshold), ]) # list of degs in yam vs mock group
+VicYam.degs <- row.names(VicvsYam[which(VicvsYam$pvalue <= pval_threshold), ])
+
+
+Vic.degs_fdr <- row.names(Vic.degs[which(Vic.degs$ <= pval_threshold), ])
+Vic.degs_fdr <- row.names(Vic.degs[which(Vic.degs$ <= pval_threshold), ])
+
+
+#generate a list of all three sets
+sets <- list (
+  Vic.degs,
+  Yam.degs,
+  VicYam.degs
+) 
+
+ggVenn_1 <- ggVennDiagram(sets,
+              label = "count",
+              label_size = 5,
+              category.names = c("Victoria vs Mock", "Yamagata vs Mock" , "Victoria vs Yamagata"))
+
+ggVenn_1 + scale_x_continuous(expand = expansion(mult = .2))
+
+#print intersecting gene list to table
+length(ggVenn_1[["plot_env"]][["data"]]@region[["item"]][[1]])
+VicvsMock_Unique_LIST <- as.data.frame(ggVenn_1[["plot_env"]][["data"]]@region[["item"]][[1]])
+write.csv(VicvsMock_Unique_LIST, file = "VicvsMock_Unique_LIST.csv")
+
+```
